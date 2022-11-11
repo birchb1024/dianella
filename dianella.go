@@ -59,7 +59,7 @@ func (s *Step) END() *Step {
 }
 func (s *Step) AND(desc string) *Step {
 	if s.status != 0 || s.err != nil {
-		log.Printf("ERROR: AND '%s' failed with status %d, %s", s.description, s.status, s.err)
+		log.Printf("ERROR: AND '%s' failed with status %d, %s", s.description, s.status, s.err.Error())
 		os.Exit(1)
 	}
 	s.description = desc
