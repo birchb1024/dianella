@@ -7,6 +7,7 @@ import (
 	"github.com/bitfield/script"
 	"log"
 	"os"
+	"os/exec"
 	"text/template"
 )
 
@@ -89,12 +90,12 @@ func (s *Step) Sbash(cmd string) (result string, rs *Step) {
 	}
 	bc := fmt.Sprintf("bash -c '%s'", s.Sexpand(cmd))
 	log.Printf("DEBUG: %s", bc)
-	result, err := script.Exec(bc).String()
+
+	stdoutBytes, err := exec.Command("/bin/bash", "-c", cmd).Output()
 	if err != nil {
 		s.FailErr(err)
 	}
-	rs = s
-	return
+	return string(stdoutBytes), s
 }
 
 func expando(cmd string, e any) string {
