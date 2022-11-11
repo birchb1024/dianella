@@ -71,7 +71,7 @@ func (s *Step) Bash(cmd string) *Step {
 	if s.ExitStatus() != 0 {
 		return s
 	}
-	bc := fmt.Sprintf("bash -c '%s'", expando(cmd, s))
+	bc := fmt.Sprintf("bash -c '%s'", s.Sexpand(cmd))
 	log.Printf("DEBUG: %s", bc)
 	_, err := script.Exec(bc).Stdout()
 
@@ -80,6 +80,21 @@ func (s *Step) Bash(cmd string) *Step {
 	}
 	s.err = err
 	return s
+}
+
+func (s *Step) Sbash(cmd string) (result string, rs *Step) {
+	log.Printf("INFO: Sbash '%s'", cmd)
+	if s.ExitStatus() != 0 {
+		return "", s
+	}
+	bc := fmt.Sprintf("bash -c '%s'", s.Sexpand(cmd))
+	log.Printf("DEBUG: %s", bc)
+	result, err := script.Exec(bc).String()
+	if err != nil {
+		s.FailErr(err)
+	}
+	rs = s
+	return
 }
 
 func expando(cmd string, e any) string {
@@ -96,6 +111,10 @@ func expando(cmd string, e any) string {
 	return buf.String()
 }
 
+func (s *Step) Sexpand(template string) string {
+	return expando(template, s)
+}
+
 type Step struct {
 	description string
 	status      int
@@ -107,6 +126,7 @@ type Step struct {
 
 func (s *Step) ExitStatus() int  { return s.status }
 func (s *Step) Error() error     { return s.err }
+func (s *Step) FailErr(e error)  { s.err = e; s.status = 1 }
 func (s *Step) Describe() string { return s.description }
 func (s *Step) Noop() *Step {
 	return s
