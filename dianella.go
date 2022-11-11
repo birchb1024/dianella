@@ -91,7 +91,9 @@ func (s *Step) Sbash(cmd string) (result string, rs *Step) {
 	bc := fmt.Sprintf("bash -c '%s'", s.Sexpand(cmd))
 	log.Printf("DEBUG: %s", bc)
 
-	stdoutBytes, err := exec.Command("/bin/bash", "-c", cmd).Output()
+	c := exec.Command("/bin/bash", "-c", cmd)
+	c.Stderr = os.Stderr
+	stdoutBytes, err := c.Output()
 	if err != nil {
 		s.FailErr(err)
 	}
