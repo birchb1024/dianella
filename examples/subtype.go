@@ -10,6 +10,7 @@ import (
 type myStep struct {
 	Step
 	timestamp time.Time
+	details   any
 }
 
 func MyBEGIN(desc string) *myStep {
@@ -18,17 +19,18 @@ func MyBEGIN(desc string) *myStep {
 	return &m
 }
 func (m *myStep) After() {
-	fmt.Printf("%s %s\n", m.GetDescription(), time.Now().Sub(m.timestamp))
+	fmt.Printf("%#v %s\n", m.details, time.Now().Sub(m.timestamp))
 }
-func (m *myStep) Before() { m.timestamp = time.Now() }
+func (m *myStep) Before(info ...any) { m.timestamp = time.Now(); m.details = info }
 
 func main() {
 	var s Stepper
 	s = MyBEGIN("Start example1").
-		AND("Set a variable to the current date")
-	s.Set("date", time.Now().String()).
+		AND("Set a variable to the current date").
+		Set("date", time.Now().String()).
 		AND("Call a function").
 		Call(func(s Stepper) Stepper {
+			time.Sleep(5 * time.Second)
 			fmt.Printf("%v\n", s.GetVar())
 			return s
 		}).

@@ -15,7 +15,7 @@ type Stepper interface {
 	After()
 	AND(string) Stepper
 	Bash(command string) Stepper
-	Before()
+	Before(...any)
 	Call(func(Stepper) Stepper) Stepper
 	END() Stepper
 	Expand(template string, outputFileName string) Stepper
@@ -52,8 +52,17 @@ func (s *Step) GetDescription() string  { return s.description }
 func (s *Step) GetErr() error           { return s.err }
 func (s *Step) GetStatus() int          { return s.status }
 
-func (s *Step) After()  {}
-func (s *Step) Before() {}
+func (s *Step) After() {}
+func (s *Step) Before(info ...any) {
+	v, ok := s.Var["trace"]
+	if !ok {
+		return
+	}
+	if v != true {
+		return
+	}
+	log.Printf("INFO: %v", info)
+}
 func (s *Step) Init(st Stepper, desc string) {
 	s.self = st
 	s.description = desc
@@ -62,26 +71,26 @@ func (s *Step) Init(st Stepper, desc string) {
 	s.Arg = flag.Args()
 }
 
-func (s *Step) FailErr(e error) { s.err = e; s.status = 1 }
-
-func (s *Step) Expand(temp string, filename string) Stepper {
-	if s.self.GetStatus() != 0 {
-		return s
-	}
-	expanded := Expando(temp, s)
-	err := os.WriteFile(filename, []byte(expanded), 0644)
-	if err != nil {
-		panic(err)
-	}
+func (s *Step) FailErr(e error) {
+	s.self.Before("FailErr", e)
+	defer s.self.After()
+	s.err = e
+	s.status = 1
+}
+func (s *Step) Fail(msg string) Stepper {
+	s.self.Before("Fail", msg)
+	defer s.self.After()
+	s.status = 1
+	s.err = fmt.Errorf(msg)
 	return s
 }
 
 func (s *Step) Set(name string, value any) Stepper {
-	s.self.Before()
-	defer s.self.After()
 	if s.GetStatus() != 0 {
 		return s
 	}
+	s.self.Before("Set", name, value)
+	defer s.self.After()
 	sv, ok := value.(string)
 	if ok {
 		s.Var[name] = Expando(sv, s)
@@ -102,7 +111,6 @@ func BEGIN(desc string) *Step {
 	s.self = &s
 	flag.VisitAll(func(f *flag.Flag) { s.Flag[f.Name] = f.Value })
 
-	log.Printf("INFO: begin %s", desc)
 	return &s
 }
 func (s *Step) IsFailed() bool {
@@ -113,58 +121,61 @@ func (s *Step) END() Stepper {
 		log.Printf("ERROR: END '%s' failed with status %d, %s", s.self.GetDescription(), s.self.GetStatus(), s.self.GetErr())
 		os.Exit(1)
 	}
-	log.Printf("INFO: END '%s'", s.self.GetDescription())
+	s.self.Before("End")
+	defer s.self.After()
 	return s
 }
-func (s *Step) AND(desc string) Stepper {
+
+func (s *Step) dieIfFailed(name string) {
 	if s.self.IsFailed() {
-		log.Printf("ERROR: AND '%s' failed with status %d, %s", s.self.GetDescription(), s.self.GetStatus(), s.self.GetErr())
+		log.Printf("ERROR: %s '%s' failed with status %d, %s", name, s.self.GetDescription(), s.self.GetStatus(), s.self.GetErr())
 		os.Exit(1)
 	}
+}
+func (s *Step) AND(desc string) Stepper {
+	s.dieIfFailed("AND")
+	s.self.Before("AND", desc)
+	defer s.self.After()
 	s.description = desc
-	log.Printf("INFO: AND '%s'", s.self.GetDescription())
 	return s
 }
 
 func (s *Step) Bash(cmd string) Stepper {
-	s.self.Before()
+	s.dieIfFailed("Bash")
+	s.self.Before("Bash", cmd)
 	defer s.self.After()
-	log.Printf("INFO: Bash '%s'", cmd)
-	if s.self.GetStatus() != 0 {
-		return s
-	}
-	bc := fmt.Sprintf("bash -c '%s'", s.self.Sexpand(cmd))
-	log.Printf("DEBUG: %s", bc)
-	_, err := script.Exec(bc).Stdout()
+	bc := fmt.Sprintf("bash -c '%s'", Expando(cmd, s))
+	_, err := script.Exec(bc).Stdout() // TODO remove script.
 
+	c := exec.Command("/bin/bash", "-c", Expando(cmd, s))
+	err = c.Run()
 	if err != nil {
-		s.status = 1
+		s.self.FailErr(err)
 	}
-	s.err = err
 	return s
 }
 
 func (s *Step) Sbash(cmd string) (result string, rs Stepper) {
-	s.self.Before()
+	s.dieIfFailed("Sbash")
+	s.self.Before("Sbash", cmd)
 	defer s.self.After()
-	log.Printf("INFO: Sbash '%s'", cmd)
-	if s.self.GetStatus() != 0 {
-		return "", s
-	}
-	bc := fmt.Sprintf("bash -c '%s'", s.self.Sexpand(cmd))
-	log.Printf("DEBUG: %s", bc)
-
-	c := exec.Command("/bin/bash", "-c", cmd)
+	c := exec.Command("/bin/bash", "-c", Expando(cmd, s))
 	c.Stderr = os.Stderr
 	stdoutBytes, err := c.Output()
 	if err != nil {
-		s.FailErr(err)
+		s.self.FailErr(err)
 	}
 	return string(stdoutBytes), s
 }
 
 // Expando - Use Go template module to interpolate expansions in a string
 // using data from the environmnent (the SICP sense of environment)
+func intMin(x, y int) int {
+	if x > y {
+		return y
+	}
+	return x
+}
 func Expando(templateSource string, environment any) string {
 	temp, err := template.New("Expando").Parse(templateSource)
 	if err != nil {
@@ -177,25 +188,28 @@ func Expando(templateSource string, environment any) string {
 	}
 	return buf.String()
 }
-
+func (s *Step) Expand(temp string, filename string) Stepper {
+	s.dieIfFailed("Expand")
+	s.self.Before("Expand", temp[:intMin(len(temp)-1, 20)], filename)
+	defer s.self.After()
+	expanded := Expando(temp, s)
+	err := os.WriteFile(filename, []byte(expanded), 0644)
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
 func (s *Step) Sexpand(template string) string {
-	s.self.Before()
+	s.dieIfFailed("Sexpand")
+	s.self.Before("Sexpand", template[:intMin(len(template)-1, 20)])
 	defer s.self.After()
 	return Expando(template, s)
 }
 
-func (s *Step) Fail(msg string) Stepper {
-	s.status = 1
-	s.err = fmt.Errorf(msg)
-	return s
-}
-
 func (s *Step) Call(f func(s Stepper) Stepper) Stepper {
-	s.self.Before()
+	s.dieIfFailed("Call")
+	s.self.Before("Call")
 	defer s.self.After()
-	if s.self.GetStatus() != 0 {
-		return s
-	}
 	f(s.self)
 	return s
 }

@@ -1,36 +1,118 @@
-# dianella
+# NAME
 
-Smooth scripting inside Go for devops-ish automation work. A library of functions and types which simplify calling external processes and error handling.
+dianella - Smooth shell-like scripting inside Go. For devops-ish automation work.
+
+A library of functions and types which simplify calling external processes and error handling.
+
+## SYNOPSIS
+
+```
+import (
+	"flag"
+	. "github.com/birchb1024/dianella"
+)
+
+func main() {
+	flag.Parse()
+	s := BEGIN("example").
+		Bash("ls -l").
+		END()
+	s = s
+}
+```
+
+## DESCRIPTION
+
+to do
+
+### Types
+
+#### Stepper
+
+#### Step
+
+### Built-in Methods
+
+also to do
+
+#### Before()
+#### After()
+
+#### BEGIN()
+#### AND()
+#### END()
+
+#### Bash()
+#### Sbash()
+#### Call()
+
+#### Expand()
+
+### Extending Dianella 
+
+with composition and overriding pure virtual functions
+
+TODO 
 
 Example:
 
 ```Go
+type myStep struct {
+	Step
+	timestamp time.Time
+	details   any
+}
+
+func MyBEGIN(desc string) *myStep {
+	m := myStep{}
+	m.Init(&m, desc)
+	return &m
+}
+func (m *myStep) After() {
+	fmt.Printf("%#v %s\n", m.details, time.Now().Sub(m.timestamp))
+}
+func (m *myStep) Before(info ...any) { m.timestamp = time.Now(); m.details = info }
+
+
 func main() {
+	var s Stepper
+	s = MyBEGIN("Start example1").
+		AND("Set a variable to the current date").
+		Set("date", time.Now().String())
 
-	flag.StringVar(&environment, "clubname", "", "one of: cricket, netball, frizbee")
-	flag.Parse()
+```
 
-	begin("Fetch the club membership Information").
-		set("member_ids", keysOfMap(memberIds)).
-		set("env", "{{.Flags.environment}}").
-		
-		expand(`
-            select * from club where member_id in (
-            {{ range $index, $id := .Var.member_ids }}
-                {{ if $index }},{{ end }} 
-                '{{.}}'
-            {{end}}      );
-			`, "members.sql").
-		bash("sqlite_wrapper.sh {{.Var.env}} members.sql").
-		end()
+### EXAMPLES:
+
+```Go
+func main() {
+	s := BEGIN("Start example1").
+		Set("trace", true).
+		Set("date", time.Now().String()).
+		Call(func(s Stepper) Stepper {
+			fmt.Printf("%#v\n", s.GetVar())
+			return s
+		}).
+		Bash("date").
+		Bash("echo {{.Var.date}}")
+	tmpFile, s := s.Sbash("mktemp")
+	tmpFile = strings.TrimSpace(tmpFile)
+	s.Set("tmpFile", tmpFile).
+		Expand("tmpFile - Date: {{.Var.date}}\n", tmpFile).
+		Bash("cat {{.Var.tmpFile}}").
+		Bash("rm -f {{.Var.tmpFile}}")
+	s.END()
+	s = s
 }
 ```
 
-TODO @Peter
+## SEE ALSO
 
-# References
+[script]()
 
-## Dianella longifolia
+## REFERENCES
+
+### Dianella longifolia
 
 “Smooth Flax Lily”
 
