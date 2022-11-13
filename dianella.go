@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/bitfield/script"
 	"log"
 	"os"
 	"os/exec"
@@ -41,7 +40,7 @@ type Step struct {
 	Var         map[string]any
 	description string
 	err         error
-	self        Stepper
+	Self        Stepper
 	status      int
 }
 
@@ -64,33 +63,34 @@ func (s *Step) Before(info ...any) {
 	log.Printf("INFO: %v", info)
 }
 func (s *Step) Init(st Stepper, desc string) {
-	s.self = st
+	s.Self = st
 	s.description = desc
 	s.Var = map[string]any{}
 	s.Flag = map[string]any{}
 	s.Arg = flag.Args()
+	s.Var["trace"] = true
 }
 
 func (s *Step) FailErr(e error) {
-	s.self.Before("FailErr", e)
-	defer s.self.After()
+	s.Self.Before("FailErr", e)
+	defer s.Self.After()
 	s.err = e
 	s.status = 1
 }
 func (s *Step) Fail(msg string) Stepper {
-	s.self.Before("Fail", msg)
-	defer s.self.After()
+	s.Self.Before("Fail", msg)
+	defer s.Self.After()
 	s.status = 1
 	s.err = fmt.Errorf(msg)
 	return s
 }
 
 func (s *Step) Set(name string, value any) Stepper {
-	if s.GetStatus() != 0 {
+	if s.Self.IsFailed() {
 		return s
 	}
-	s.self.Before("Set", name, value)
-	defer s.self.After()
+	s.Self.Before("Set", name, value)
+	defer s.Self.After()
 	sv, ok := value.(string)
 	if ok {
 		s.Var[name] = Expando(sv, s)
@@ -104,66 +104,67 @@ func BEGIN(desc string) *Step {
 		description: desc,
 		status:      0,
 		err:         nil,
-		Var:         map[string]any{},
+		Var:         map[string]any{"trace": true},
 		Flag:        map[string]any{},
 		Arg:         flag.Args(),
 	}
-	s.self = &s
+	s.Self = &s
 	flag.VisitAll(func(f *flag.Flag) { s.Flag[f.Name] = f.Value })
 
 	return &s
 }
 func (s *Step) IsFailed() bool {
-	return s.self.GetStatus() != 0 || s.self.GetErr() != nil
+	return s.Self.GetStatus() != 0 || s.Self.GetErr() != nil
 }
 func (s *Step) END() Stepper {
-	if s.self.IsFailed() {
-		log.Printf("ERROR: END '%s' failed with status %d, %s", s.self.GetDescription(), s.self.GetStatus(), s.self.GetErr())
+	if s.Self.IsFailed() {
+		log.Printf("ERROR: END '%s' failed with status %d, %s", s.Self.GetDescription(), s.Self.GetStatus(), s.Self.GetErr())
 		os.Exit(1)
 	}
-	s.self.Before("End")
-	defer s.self.After()
+	s.Self.Before("End")
+	defer s.Self.After()
 	return s
 }
 
 func (s *Step) dieIfFailed(name string) {
-	if s.self.IsFailed() {
-		log.Printf("ERROR: %s '%s' failed with status %d, %s", name, s.self.GetDescription(), s.self.GetStatus(), s.self.GetErr())
+	if s.Self.IsFailed() {
+		log.Printf("ERROR: %s '%s' failed with status %d, %s", name, s.Self.GetDescription(), s.Self.GetStatus(), s.Self.GetErr())
 		os.Exit(1)
 	}
 }
 func (s *Step) AND(desc string) Stepper {
-	s.dieIfFailed("AND")
-	s.self.Before("AND", desc)
-	defer s.self.After()
+	if s.Self.IsFailed() {
+		return s
+	}
+	s.Self.Before("AND", desc)
+	defer s.Self.After()
 	s.description = desc
 	return s
 }
 
 func (s *Step) Bash(cmd string) Stepper {
-	s.dieIfFailed("Bash")
-	s.self.Before("Bash", cmd)
-	defer s.self.After()
-	bc := fmt.Sprintf("bash -c '%s'", Expando(cmd, s))
-	_, err := script.Exec(bc).Stdout() // TODO remove script.
-
+	if s.Self.IsFailed() {
+		return s
+	}
+	s.Self.Before("Bash", cmd)
+	defer s.Self.After()
 	c := exec.Command("/bin/bash", "-c", Expando(cmd, s))
-	err = c.Run()
+	err := c.Run()
 	if err != nil {
-		s.self.FailErr(err)
+		s.Self.FailErr(err)
 	}
 	return s
 }
 
 func (s *Step) Sbash(cmd string) (result string, rs Stepper) {
 	s.dieIfFailed("Sbash")
-	s.self.Before("Sbash", cmd)
-	defer s.self.After()
+	s.Self.Before("Sbash", cmd)
+	defer s.Self.After()
 	c := exec.Command("/bin/bash", "-c", Expando(cmd, s))
 	c.Stderr = os.Stderr
 	stdoutBytes, err := c.Output()
 	if err != nil {
-		s.self.FailErr(err)
+		s.Self.FailErr(err)
 	}
 	return string(stdoutBytes), s
 }
@@ -179,37 +180,41 @@ func intMin(x, y int) int {
 func Expando(templateSource string, environment any) string {
 	temp, err := template.New("Expando").Parse(templateSource)
 	if err != nil {
-		panic(err)
+		log.Fatalf("ERROR: %s", err)
 	}
 	var buf bytes.Buffer
 	err = temp.Execute(&buf, environment)
 	if err != nil {
-		panic(err)
+		log.Fatalf("ERROR: %s", err)
 	}
 	return buf.String()
 }
 func (s *Step) Expand(temp string, filename string) Stepper {
-	s.dieIfFailed("Expand")
-	s.self.Before("Expand", temp[:intMin(len(temp)-1, 20)], filename)
-	defer s.self.After()
+	if s.Self.IsFailed() {
+		return s
+	}
+	s.Self.Before("Expand", temp[:intMin(len(temp)-1, 20)], filename)
+	defer s.Self.After()
 	expanded := Expando(temp, s)
 	err := os.WriteFile(filename, []byte(expanded), 0644)
 	if err != nil {
-		panic(err)
+		log.Fatalf("ERROR: ", err)
 	}
 	return s
 }
 func (s *Step) Sexpand(template string) string {
 	s.dieIfFailed("Sexpand")
-	s.self.Before("Sexpand", template[:intMin(len(template)-1, 20)])
-	defer s.self.After()
+	s.Self.Before("Sexpand", template[:intMin(len(template)-1, 20)])
+	defer s.Self.After()
 	return Expando(template, s)
 }
 
 func (s *Step) Call(f func(s Stepper) Stepper) Stepper {
-	s.dieIfFailed("Call")
-	s.self.Before("Call")
-	defer s.self.After()
-	f(s.self)
+	if s.Self.IsFailed() {
+		return s
+	}
+	s.Self.Before("Call")
+	defer s.Self.After()
+	f(s.Self)
 	return s
 }
