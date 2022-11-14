@@ -16,6 +16,7 @@ type Stepper interface {
 	Bash(command string) Stepper
 	Before(...any)
 	Call(func(Stepper) Stepper) Stepper
+	CONTINUE(string) Stepper
 	END() Stepper
 	Expand(template string, outputFileName string) Stepper
 	Fail(msg string) Stepper
@@ -24,7 +25,7 @@ type Stepper interface {
 	IsFailed() bool
 	Sbash(cmd string) (string, Stepper)
 	Set(variableName string, value any) Stepper
-	Sexpand(cmd string) string
+	Sexpand(cmd string) (string, Stepper)
 
 	GetDescription() string
 	GetErr() error
@@ -50,6 +51,9 @@ func (s *Step) GetFlag() map[string]any { return s.Flag }
 func (s *Step) GetDescription() string  { return s.description }
 func (s *Step) GetErr() error           { return s.err }
 func (s *Step) GetStatus() int          { return s.status }
+func (s *Step) IsFailed() bool {
+	return s.Self.GetStatus() != 0 || s.Self.GetErr() != nil
+}
 
 func (s *Step) After() {}
 func (s *Step) Before(info ...any) {
@@ -62,6 +66,7 @@ func (s *Step) Before(info ...any) {
 	}
 	log.Printf("INFO: %v", info)
 }
+
 func (s *Step) Init(st Stepper, desc string) {
 	s.Self = st
 	s.description = desc
@@ -69,20 +74,6 @@ func (s *Step) Init(st Stepper, desc string) {
 	s.Flag = map[string]any{}
 	s.Arg = flag.Args()
 	s.Var["trace"] = true
-}
-
-func (s *Step) FailErr(e error) {
-	s.Self.Before("FailErr", e)
-	defer s.Self.After()
-	s.err = e
-	s.status = 1
-}
-func (s *Step) Fail(msg string) Stepper {
-	s.Self.Before("Fail", msg)
-	defer s.Self.After()
-	s.status = 1
-	s.err = fmt.Errorf(msg)
-	return s
 }
 
 func (s *Step) Set(name string, value any) Stepper {
@@ -99,6 +90,20 @@ func (s *Step) Set(name string, value any) Stepper {
 	}
 	return s
 }
+func (s *Step) FailErr(e error) {
+	s.Self.Before("FailErr", e)
+	defer s.Self.After()
+	s.err = e
+	s.status = 1
+}
+func (s *Step) Fail(msg string) Stepper {
+	s.Self.Before("Fail", msg)
+	defer s.Self.After()
+	s.status = 1
+	s.err = fmt.Errorf(msg)
+	return s
+}
+
 func BEGIN(desc string) *Step {
 	s := Step{
 		description: desc,
@@ -113,8 +118,25 @@ func BEGIN(desc string) *Step {
 
 	return &s
 }
-func (s *Step) IsFailed() bool {
-	return s.Self.GetStatus() != 0 || s.Self.GetErr() != nil
+func (s *Step) AND(desc string) Stepper {
+	if s.Self.IsFailed() {
+		return s
+	}
+	s.Self.Before("AND", desc)
+	defer s.Self.After()
+	s.description = desc
+	return s
+}
+func (s *Step) CONTINUE(desc string) Stepper {
+	if s.Self.IsFailed() {
+		log.Printf("INFO: CONTINUE ignoring '%s' failure with status %d, %s", s.Self.GetDescription(), s.Self.GetStatus(), s.Self.GetErr())
+	}
+	s.Self.Before("CONTINUE", desc)
+	defer s.Self.After()
+	s.description = desc
+	s.status = 0
+	s.err = nil
+	return s
 }
 func (s *Step) END() Stepper {
 	if s.Self.IsFailed() {
@@ -126,22 +148,6 @@ func (s *Step) END() Stepper {
 	return s
 }
 
-func (s *Step) dieIfFailed(name string) {
-	if s.Self.IsFailed() {
-		log.Printf("ERROR: %s '%s' failed with status %d, %s", name, s.Self.GetDescription(), s.Self.GetStatus(), s.Self.GetErr())
-		os.Exit(1)
-	}
-}
-func (s *Step) AND(desc string) Stepper {
-	if s.Self.IsFailed() {
-		return s
-	}
-	s.Self.Before("AND", desc)
-	defer s.Self.After()
-	s.description = desc
-	return s
-}
-
 func (s *Step) Bash(cmd string) Stepper {
 	if s.Self.IsFailed() {
 		return s
@@ -149,15 +155,18 @@ func (s *Step) Bash(cmd string) Stepper {
 	s.Self.Before("Bash", cmd)
 	defer s.Self.After()
 	c := exec.Command("/bin/bash", "-c", Expando(cmd, s))
+	c.Stderr = os.Stderr
+	c.Stdout = os.Stdout
 	err := c.Run()
 	if err != nil {
 		s.Self.FailErr(err)
 	}
 	return s
 }
-
 func (s *Step) Sbash(cmd string) (result string, rs Stepper) {
-	s.dieIfFailed("Sbash")
+	if s.Self.IsFailed() {
+		return "", s
+	}
 	s.Self.Before("Sbash", cmd)
 	defer s.Self.After()
 	c := exec.Command("/bin/bash", "-c", Expando(cmd, s))
@@ -202,11 +211,13 @@ func (s *Step) Expand(temp string, filename string) Stepper {
 	}
 	return s
 }
-func (s *Step) Sexpand(template string) string {
-	s.dieIfFailed("Sexpand")
+func (s *Step) Sexpand(template string) (string, Stepper) {
+	if s.Self.IsFailed() {
+		return "", s
+	}
 	s.Self.Before("Sexpand", template[:intMin(len(template)-1, 20)])
 	defer s.Self.After()
-	return Expando(template, s)
+	return Expando(template, s), s
 }
 
 func (s *Step) Call(f func(s Stepper) Stepper) Stepper {

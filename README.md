@@ -120,11 +120,14 @@ The `Stepper` interface provides an abstract data type to step structs. It allow
 virtual. The code inside the Step methods makes calls to other functions via the `Self` variable. eg
 
 ```Go
-func (s *Step) Sexpand(template string) string {
-	s.Self.Before("Sexpand", template[:intMin(len(template)-1, 20)])
+func (s *Step) Expand(temp string, filename string) Stepper {
+	if s.Self.IsFailed() {
+		return s
+	}
+	s.Self.Before("Expand", temp[:intMin(len(temp)-1, 20)], filename)
 	defer s.Self.After()
-	return Expando(template, s)
-}
+	. . . 
+	
 ```
 Here you can see that the virtual functions `Before()` and `After()` are called via `Self`. 
 
@@ -209,9 +212,13 @@ Returns a pointer to a new `Step` object.
 #### `AND()`
 Updates the step description.
 
+### `CONTINUE()`
+If the receiver step has failed, it prints the error message and then resets the failure, allowing
+the next method to run instead of skipping. 
+
 #### `END()`
-Finishes the execution, if there has been a failure in the previous step functions, an error message is printed, 
-and the process terminates.
+Finishes the execution if there has been a failure in the previous step functions, an error message is printed, 
+and the process terminates. Otherwise return the step and continue.
 
 #### `Bash()`
 Calls `/bin/bash` as a subprocess, passing the argument to `-c ` after it has been expanded by the template module 

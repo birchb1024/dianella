@@ -14,16 +14,15 @@ func printAllVariables(s Stepper) Stepper {
 }
 func main() {
 	flag.Parse()
-	var s Stepper = BEGIN("Start example1").
+	var s Stepper = BEGIN("Basic example").
 		// Set("trace", false).
 		Set("date", time.Now().String()).
 		Call(printAllVariables).
 		Bash("date").
 		Bash("echo {{.Var.date}}")
 	tmpFile, s := s.Sbash("mktemp")
-	tmpFile = strings.TrimSpace(tmpFile)
-	s.Set("tmpFile", tmpFile).
-		Expand("tmpFile - Date: {{.Var.date}}\n", tmpFile).
+	s.Set("tmpFile", strings.TrimSpace(tmpFile)).
+		Expand("tmpFile: {{.Var.tmpFile}} - Date: {{.Var.date}}\n", strings.TrimSpace(tmpFile)).
 		Bash("cat {{.Var.tmpFile}}").
 		Bash("rm -f {{.Var.tmpFile}}").
 		END()
