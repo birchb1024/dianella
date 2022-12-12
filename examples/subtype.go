@@ -67,7 +67,7 @@ func main() {
 		AND("Use bash to send the file to stdout and then remove it").
 		Bash("cat {{.Var.tmpFile}}").
 		Bash("rm -f {{.Var.tmpFile}}")
-	s.AND("Datbase query")
+	s.AND("Database query")
 	s.PostgreSQL("select * from batters").
 		END()
 	s = s

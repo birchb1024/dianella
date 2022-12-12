@@ -18,8 +18,8 @@ func main() {
 
 	s := BEGIN("variables and template example").
 		Set("userid", userid).
-		Bash("dscl . readall /users | grep -B 5 {{.Var.userid.Username}} | grep HomePhoneNumber").
-		Expand("{{.Flag.is_it_cricket}} {{index .Arg 1}}\n", "/dev/stdout").
+		Bash("test $(uname) = Darwin && dscl . readall /users | grep -B 5 {{.Var.userid.Username}} | grep HomePhoneNumber").
+		Expand("Is it Cricket? {{.Flag.is_it_cricket}} Args: {{ .Arg }}\n", "/dev/stdout").
 		END()
 	s = s
 }

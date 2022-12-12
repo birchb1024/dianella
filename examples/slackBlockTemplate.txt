@@ -1,0 +1,13 @@
+{
+	"channel": "{{ .Flag.channelName }}",
+	"blocks": [
+		{
+			"type": "header",
+			"text": {
+				"type": "plain_text",
+				"text": "Example SlackBot message from UNIX Epoch time {{.Var.date}}",
+				"emoji": true
+			}
+		},
+	]
+}

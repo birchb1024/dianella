@@ -1,19 +1,15 @@
 package dianella
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
-	"text/template"
 )
 
 type Stepper interface {
 	After()
 	AND(string) Stepper
-	Bash(command string) Stepper
 	Before(...any)
 	Call(func(Stepper) Stepper) Stepper
 	CONTINUE(string) Stepper
@@ -23,18 +19,24 @@ type Stepper interface {
 	FailErr(e error)
 	Init(Stepper, string)
 	IsFailed() bool
-	Sbash(cmd string) (string, Stepper)
 	Set(variableName string, value any) Stepper
 	Sexpand(cmd string) (string, Stepper)
+
+	Bash(command string) Stepper
+	Sbash(cmd string) (string, Stepper)
+
+	ReadCSV(filename string) (*Step, RowsOfFields)
 
 	GetDescription() string
 	GetErr() error
 	GetArg() []string
 	GetFlag() map[string]any
 	GetVar() map[string]any
+	GetStringVar(name string) (string, Stepper)
 	GetStatus() int
 }
 
+// Step - Struct to hold status of execution steps and variables passed between steps.
 type Step struct {
 	Arg         []string
 	Flag        map[string]any
@@ -48,9 +50,11 @@ type Step struct {
 func (s *Step) GetArg() []string        { return s.Arg }
 func (s *Step) GetVar() map[string]any  { return s.Var }
 func (s *Step) GetFlag() map[string]any { return s.Flag }
-func (s *Step) GetDescription() string  { return s.description }
-func (s *Step) GetErr() error           { return s.err }
-func (s *Step) GetStatus() int          { return s.status }
+
+// GetDescription - return the current step description
+func (s *Step) GetDescription() string { return s.description }
+func (s *Step) GetErr() error          { return s.err }
+func (s *Step) GetStatus() int         { return s.status }
 func (s *Step) IsFailed() bool {
 	return s.Self.GetStatus() != 0 || s.Self.GetErr() != nil
 }
@@ -64,7 +68,8 @@ func (s *Step) Before(info ...any) {
 	if v != true {
 		return
 	}
-	log.Printf("INFO: %v", info)
+	longMessage := fmt.Sprintf("INFO: %-16v", info)
+	log.Printf(stringTruncate(longMessage, 80))
 }
 
 func (s *Step) Init(st Stepper, desc string) {
@@ -74,6 +79,8 @@ func (s *Step) Init(st Stepper, desc string) {
 	s.Flag = map[string]any{}
 	s.Arg = flag.Args()
 	s.Var["trace"] = true
+	flag.VisitAll(func(f *flag.Flag) { s.Flag[f.Name] = f.Value })
+
 }
 
 func (s *Step) Set(name string, value any) Stepper {
@@ -82,14 +89,27 @@ func (s *Step) Set(name string, value any) Stepper {
 	}
 	s.Self.Before("Set", name, value)
 	defer s.Self.After()
-	sv, ok := value.(string)
-	if ok {
-		s.Var[name] = Expando(sv, s)
-	} else {
-		s.Var[name] = value
+	s.Var[name] = value
+	if sv, ok := value.(string); ok {
+		ex, err := Expando(sv, s)
+		if err != nil {
+			s.FailErr(err)
+			return s
+		}
+		s.Var[name] = ex
 	}
 	return s
 }
+
+func (s *Step) GetStringVar(name string) (string, Stepper) {
+	dd, ok := s.GetVar()[name]
+	if !ok {
+		s.Fail("missing dataDir variable")
+		return "", s
+	}
+	return fmt.Sprintf("%s", dd), s
+}
+
 func (s *Step) FailErr(e error) {
 	s.Self.Before("FailErr", e)
 	defer s.Self.After()
@@ -146,78 +166,6 @@ func (s *Step) END() Stepper {
 	s.Self.Before("End")
 	defer s.Self.After()
 	return s
-}
-
-func (s *Step) Bash(cmd string) Stepper {
-	if s.Self.IsFailed() {
-		return s
-	}
-	s.Self.Before("Bash", cmd)
-	defer s.Self.After()
-	c := exec.Command("/bin/bash", "-c", Expando(cmd, s))
-	c.Stderr = os.Stderr
-	c.Stdout = os.Stdout
-	err := c.Run()
-	if err != nil {
-		s.Self.FailErr(err)
-	}
-	return s
-}
-func (s *Step) Sbash(cmd string) (result string, rs Stepper) {
-	if s.Self.IsFailed() {
-		return "", s
-	}
-	s.Self.Before("Sbash", cmd)
-	defer s.Self.After()
-	c := exec.Command("/bin/bash", "-c", Expando(cmd, s))
-	c.Stderr = os.Stderr
-	stdoutBytes, err := c.Output()
-	if err != nil {
-		s.Self.FailErr(err)
-	}
-	return string(stdoutBytes), s
-}
-
-// Expando - Use Go template module to interpolate expansions in a string
-// using data from the environmnent (the SICP sense of environment)
-func intMin(x, y int) int {
-	if x > y {
-		return y
-	}
-	return x
-}
-func Expando(templateSource string, environment any) string {
-	temp, err := template.New("Expando").Parse(templateSource)
-	if err != nil {
-		log.Fatalf("ERROR: %s", err)
-	}
-	var buf bytes.Buffer
-	err = temp.Execute(&buf, environment)
-	if err != nil {
-		log.Fatalf("ERROR: %s", err)
-	}
-	return buf.String()
-}
-func (s *Step) Expand(temp string, filename string) Stepper {
-	if s.Self.IsFailed() {
-		return s
-	}
-	s.Self.Before("Expand", temp[:intMin(len(temp)-1, 20)], filename)
-	defer s.Self.After()
-	expanded := Expando(temp, s)
-	err := os.WriteFile(filename, []byte(expanded), 0644)
-	if err != nil {
-		log.Fatalf("ERROR: ", err)
-	}
-	return s
-}
-func (s *Step) Sexpand(template string) (string, Stepper) {
-	if s.Self.IsFailed() {
-		return "", s
-	}
-	s.Self.Before("Sexpand", template[:intMin(len(template)-1, 20)])
-	defer s.Self.After()
-	return Expando(template, s), s
 }
 
 func (s *Step) Call(f func(s Stepper) Stepper) Stepper {
