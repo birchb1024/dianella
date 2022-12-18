@@ -25,7 +25,7 @@ type Stepper interface {
 	Bash(command string) Stepper
 	Sbash(cmd string) (string, Stepper)
 
-	ReadCSV(filename string) (*Step, RowsOfFields)
+	ReadCSV(filename string) (Stepper, RowsOfFields)
 
 	GetDescription() string
 	GetErr() error

@@ -8,7 +8,7 @@ import (
 
 type RowsOfFields [][]string
 
-func (s *Step) ReadCSV(filename string) (*Step, RowsOfFields) {
+func (s *Step) ReadCSV(filename string) (Stepper, RowsOfFields) {
 	if s.IsFailed() {
 		return s, nil
 	}

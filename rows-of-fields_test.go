@@ -150,7 +150,7 @@ func TestRowsOfFields_SelectColumnDistinctValues(t *testing.T) {
 func TestRowsOfFields_ReadCSV(t *testing.T) {
 	t.Parallel()
 	s := BEGIN("Test CSV file reader")
-	s, actual := s.ReadCSV("test/fixture.csv")
+	_, actual := s.ReadCSV("test/fixture.csv")
 	if s.IsFailed() {
 		t.Error(s.GetErr())
 	}
@@ -164,7 +164,7 @@ func TestRowsOfFields_ReadCSV(t *testing.T) {
 
 func TestRowsOfFields_ReadCSV_404(t *testing.T) {
 	t.Parallel()
-	s := BEGIN("Test CSV file reader")
+	var s Stepper = BEGIN("Test CSV file reader")
 	s, _ = s.ReadCSV("test/nosuchfile.csv")
 	t.Log(s.GetErr())
 	if !s.IsFailed() {
@@ -174,7 +174,7 @@ func TestRowsOfFields_ReadCSV_404(t *testing.T) {
 
 func TestRowsOfFields_ReadCSV_Bad(t *testing.T) {
 	t.Parallel()
-	s := BEGIN("Test CSV file reader")
+	var s Stepper = BEGIN("Test CSV file reader")
 	s, _ = s.ReadCSV("test/badfixture.csv")
 	t.Log(s.GetErr())
 	if !s.IsFailed() {
