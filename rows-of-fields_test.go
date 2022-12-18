@@ -161,3 +161,23 @@ func TestRowsOfFields_ReadCSV(t *testing.T) {
 	}
 
 }
+
+func TestRowsOfFields_ReadCSV_404(t *testing.T) {
+	t.Parallel()
+	s := BEGIN("Test CSV file reader")
+	s, _ = s.ReadCSV("test/nosuchfile.csv")
+	t.Log(s.GetErr())
+	if !s.IsFailed() {
+		t.Fail()
+	}
+}
+
+func TestRowsOfFields_ReadCSV_Bad(t *testing.T) {
+	t.Parallel()
+	s := BEGIN("Test CSV file reader")
+	s, _ = s.ReadCSV("test/badfixture.csv")
+	t.Log(s.GetErr())
+	if !s.IsFailed() {
+		t.Fail()
+	}
+}

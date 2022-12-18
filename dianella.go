@@ -104,7 +104,7 @@ func (s *Step) Set(name string, value any) Stepper {
 func (s *Step) GetStringVar(name string) (string, Stepper) {
 	dd, ok := s.GetVar()[name]
 	if !ok {
-		s.Fail("missing dataDir variable")
+		s.FailErr(fmt.Errorf("missing '%s' variable", name))
 		return "", s
 	}
 	return fmt.Sprintf("%s", dd), s

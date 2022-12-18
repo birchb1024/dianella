@@ -80,10 +80,12 @@ func main() {
 	slackReportTemplate, _ := s.Sbash("cat slackBlockTemplate.txt")
 	s.AND("Read the epoch date and time").
 		Set("date", time.Now().Unix()).
-		AND("Generate the slack block JSON message").
+		AND("Generate the slack block JSON message file").
 		Expand(slackReportTemplate, "block.json").
 		AND("Send a message to a slack channel")
 	s.SendSlack("block.json").
+		AND("clean up temporary file").
+		Bash("rm -f block.json").
 		END()
 	s = s
 }
