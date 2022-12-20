@@ -15,7 +15,7 @@ func printAllVariables(s Stepper) Stepper {
 func main() {
 	flag.Parse()
 	var s Stepper = BEGIN("Basic example").
-		// Set("trace", false).
+		Set("trace_length", 2000).
 		Set("date", time.Now().String()).
 		Call(printAllVariables).
 		Bash("date").

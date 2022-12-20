@@ -16,6 +16,9 @@ func (s *Step) Bash(cmd string) Stepper {
 		s.Self.FailErr(err)
 		return s
 	}
+	if cmd != ex {
+		s.Self.Before("Bash.cmd", ex)
+	}
 	c := exec.Command("/bin/bash", "-c", ex)
 	c.Stderr = os.Stderr
 	c.Stdout = os.Stdout

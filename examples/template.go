@@ -17,6 +17,7 @@ func main() {
 	flag.Parse()
 
 	s := BEGIN("variables and template example").
+		Set("trace_length", 2000).
 		Set("userid", userid).
 		Bash("test $(uname) = Darwin && dscl . readall /users | grep -B 5 {{.Var.userid.Username}} | grep HomePhoneNumber").
 		Expand("Is it Cricket? {{.Flag.is_it_cricket}} Args: {{ .Arg }}\n", "/dev/stdout").

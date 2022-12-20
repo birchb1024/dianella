@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+
 	"os"
 )
 
@@ -18,6 +19,7 @@ type Stepper interface {
 	Fail(msg string) Stepper
 	FailErr(e error)
 	Init(Stepper, string)
+	SetLogger(l *log.Logger)
 	IsFailed() bool
 	Set(variableName string, value any) Stepper
 	Sexpand(cmd string) (string, Stepper)
@@ -45,6 +47,7 @@ type Step struct {
 	err         error
 	Self        Stepper
 	status      int
+	logg        *log.Logger
 }
 
 func (s *Step) GetArg() []string        { return s.Arg }
@@ -59,7 +62,8 @@ func (s *Step) IsFailed() bool {
 	return s.Self.GetStatus() != 0 || s.Self.GetErr() != nil
 }
 
-func (s *Step) After() {}
+func (s *Step) SetLogger(l *log.Logger) { s.logg = l }
+func (s *Step) After()                  {}
 func (s *Step) Before(info ...any) {
 	v, ok := s.Var["trace"]
 	if !ok {
@@ -69,11 +73,13 @@ func (s *Step) Before(info ...any) {
 		return
 	}
 	longMessage := fmt.Sprintf("INFO: %-16v", info)
-	log.Printf(stringTruncate(longMessage, 80))
+	width, _ := GetIntBinding(s.GetVar(), "trace_length", 80)
+	s.logg.Printf(stringTruncate(longMessage, uint(width)))
 }
 
 func (s *Step) Init(st Stepper, desc string) {
 	s.Self = st
+	s.logg = log.Default()
 	s.description = desc
 	s.Var = map[string]any{}
 	s.Flag = map[string]any{}
@@ -99,6 +105,19 @@ func (s *Step) Set(name string, value any) Stepper {
 		s.Var[name] = ex
 	}
 	return s
+}
+
+// GetIntBinding - look up integer variable, return the value or the alt if not found or not int
+func GetIntBinding(symbols map[string]any, name string, alt int) (int, error) {
+	va, ok := symbols[name]
+	if !ok {
+		return alt, fmt.Errorf("missing '%s' variable", name)
+	}
+	result, ok := va.(int)
+	if !ok {
+		return alt, fmt.Errorf("'%s' variable not integer: '%v'", name, va)
+	}
+	return result, nil
 }
 
 func (s *Step) GetStringVar(name string) (string, Stepper) {
@@ -132,6 +151,7 @@ func BEGIN(desc string) *Step {
 		Var:         map[string]any{"trace": true},
 		Flag:        map[string]any{},
 		Arg:         flag.Args(),
+		logg:        log.Default(),
 	}
 	s.Self = &s
 	flag.VisitAll(func(f *flag.Flag) { s.Flag[f.Name] = f.Value })
@@ -149,7 +169,7 @@ func (s *Step) AND(desc string) Stepper {
 }
 func (s *Step) CONTINUE(desc string) Stepper {
 	if s.Self.IsFailed() {
-		log.Printf("INFO: CONTINUE ignoring '%s' failure with status %d, %s", s.Self.GetDescription(), s.Self.GetStatus(), s.Self.GetErr())
+		s.logg.Printf("INFO: CONTINUE ignoring '%s' failure with status %d, %s", s.Self.GetDescription(), s.Self.GetStatus(), s.Self.GetErr())
 	}
 	s.Self.Before("CONTINUE", desc)
 	defer s.Self.After()
@@ -160,7 +180,7 @@ func (s *Step) CONTINUE(desc string) Stepper {
 }
 func (s *Step) END() Stepper {
 	if s.Self.IsFailed() {
-		log.Printf("ERROR: END '%s' failed with status %d, %s", s.Self.GetDescription(), s.Self.GetStatus(), s.Self.GetErr())
+		s.logg.Printf("ERROR: END '%s' failed with status %d, %s", s.Self.GetDescription(), s.Self.GetStatus(), s.Self.GetErr())
 		os.Exit(1)
 	}
 	s.Self.Before("End")
