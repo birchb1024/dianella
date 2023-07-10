@@ -6,7 +6,7 @@ import (
 )
 
 func TestIntMin(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 	testTable := []struct{ a, b, expected int }{
 		{0, 0, 0},
 		{1, 2, 1},

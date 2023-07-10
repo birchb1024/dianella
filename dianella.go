@@ -9,45 +9,44 @@ import (
 )
 
 type Stepper interface {
-	After()
 	AND(string) Stepper
+	After()
+	Bash(command string) Stepper
 	Before(...any)
-	Call(func(Stepper) Stepper) Stepper
 	CONTINUE(string) Stepper
+	ContinueOnError(bool) Stepper
+	Call(func(Stepper) Stepper) Stepper
 	END() Stepper
 	Expand(template string, outputFileName string) Stepper
 	Fail(msg string) Stepper
 	FailErr(e error)
-	Init(Stepper, string)
-	SetLogger(l *log.Logger)
-	IsFailed() bool
-	Set(variableName string, value any) Stepper
-	Sexpand(cmd string) (string, Stepper)
-
-	Bash(command string) Stepper
-	Sbash(cmd string) (string, Stepper)
-
-	ReadCSV(filename string) (Stepper, RowsOfFields)
-
+	GetArg() []string
 	GetDescription() string
 	GetErr() error
-	GetArg() []string
 	GetFlag() map[string]any
-	GetVar() map[string]any
-	GetStringVar(name string) (string, Stepper)
 	GetStatus() int
+	GetStringVar(name string) (string, Stepper)
+	GetVar() map[string]any
+	Init(Stepper, string)
+	IsFailed() bool
+	ReadCSV(filename string) (Stepper, RowsOfFields)
+	Sbash(cmd string) (string, Stepper)
+	Set(variableName string, value any) Stepper
+	SetLogger(l *log.Logger)
+	Sexpand(cmd string) (string, Stepper)
 }
 
 // Step - Struct to hold status of execution steps and variables passed between steps.
 type Step struct {
-	Arg         []string
-	Flag        map[string]any
-	Var         map[string]any
-	description string
-	err         error
-	Self        Stepper
-	status      int
-	logg        *log.Logger
+	Arg            []string
+	Flag           map[string]any
+	Var            map[string]any
+	description    string
+	err            error
+	Self           Stepper
+	status         int
+	logg           *log.Logger
+	continueOnFail bool
 }
 
 func (s *Step) GetArg() []string        { return s.Arg }
@@ -87,6 +86,11 @@ func (s *Step) Init(st Stepper, desc string) {
 	s.Var["trace"] = true
 	flag.VisitAll(func(f *flag.Flag) { s.Flag[f.Name] = f.Value })
 
+}
+
+func (s *Step) ContinueOnError(x bool) Stepper {
+	s.continueOnFail = x
+	return s
 }
 
 func (s *Step) Set(name string, value any) Stepper {
@@ -134,12 +138,18 @@ func (s *Step) FailErr(e error) {
 	defer s.Self.After()
 	s.err = e
 	s.status = 1
+	if !s.continueOnFail {
+		log.Fatalf("When %s FailErr: %#v", s.description, e)
+	}
 }
 func (s *Step) Fail(msg string) Stepper {
 	s.Self.Before("Fail", msg)
 	defer s.Self.After()
 	s.status = 1
 	s.err = fmt.Errorf(msg)
+	if !s.continueOnFail {
+		log.Fatalf("When %s Fail: %s", s.description, msg)
+	}
 	return s
 }
 

@@ -23,7 +23,7 @@ func TestBasicsPass(t *testing.T) {
 	t.Parallel()
 	flag.Parse()
 	given := struct{ time string }{time.Now().String()}
-	var s Stepper = BEGIN("Basic example")
+	var s Stepper = BEGIN("Basic example").ContinueOnError(true)
 	s.Init(s, "Init")
 	s.Set("trace", false).
 		Set("date", given.time).
@@ -54,7 +54,7 @@ func TestBasicsEarlyFail(t *testing.T) {
 	t.Parallel()
 	flag.Parse()
 	given := struct{ time string }{time.Now().String()}
-	var s Stepper = BEGIN("Basic example")
+	var s Stepper = BEGIN("Basic example").ContinueOnError(true)
 	s.Init(s, "Init")
 	s.Set("trace", true).
 		Set("date", given.time).
@@ -84,10 +84,10 @@ func TestBasicsEarlyFail(t *testing.T) {
 }
 
 func TestSexpandFails(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 	flag.Parse()
 	given := struct{ time string }{time.Now().String()}
-	s := BEGIN("Bad template").
+	s := BEGIN("Bad template").ContinueOnError(true).
 		Set("date", given.time)
 	_, s = s.Sexpand("{{")
 	t.Log(s.GetErr())
@@ -106,7 +106,7 @@ func TestExpandFails(t *testing.T) {
 	t.Parallel()
 	flag.Parse()
 	given := struct{ time string }{time.Now().String()}
-	s := BEGIN("Bad template").
+	s := BEGIN("Bad template").ContinueOnError(true).
 		Set("date", given.time).
 		Expand("{{", "/tmp/foo")
 	t.Log(s.GetErr())
@@ -137,7 +137,7 @@ func TestGetIntBinding(t *testing.T) {
 		"big":         {given: 424242, alt: 0, expect: 424242},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s := BEGIN(t.Name())
+			s := BEGIN(t.Name()).ContinueOnError(true)
 			if plot.given != nil {
 				s.Set("trace-length", plot.given)
 			}
@@ -164,7 +164,7 @@ func TestTrace(t *testing.T) {
 		"huge":        {given: 2000, expect: "\nINFO: [Bash.cmd         echo '2000' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 >/dev/null]\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s := BEGIN(t.Name())
+			s := BEGIN(t.Name()).ContinueOnError(true)
 			var b bytes.Buffer
 			lg := log.New(io.Writer(&b), "", 0)
 			s.SetLogger(lg)

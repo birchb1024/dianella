@@ -68,7 +68,7 @@ func runSbash(t *testing.T, testTable map[string]struct{ cmd, expected string },
 	t.Helper()
 	for name, scenario := range testTable {
 		t.Run(name, func(t *testing.T) {
-			s := BEGIN(name).
+			s := BEGIN(name).ContinueOnError(true).
 				Set("testName", name)
 			if name == "@prior-step-failed" {
 				s.Fail(name)
@@ -90,7 +90,7 @@ func runBash(t *testing.T, testTable map[string]string, pass bool) {
 	t.Helper()
 	for name, cmd := range testTable {
 		t.Run(name, func(t *testing.T) {
-			s := BEGIN(name).
+			s := BEGIN(name).ContinueOnError(true).
 				Set("testName", name)
 			if name == "@prior-step-failed" {
 				s.Fail(name)
